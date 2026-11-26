@@ -3,7 +3,7 @@ import { useConversation, useConversationClientTool } from "@elevenlabs/react";
 import { ScoreBars, ProgressLine } from "./Charts";
 import {
   Result, normalise, average, loadHistory, saveHistory, sampleResults,
-  dimensionsFor, LEVEL_LABEL, SCORE_LABEL,
+  dimensionsFor, LEVEL_LABEL, SCORE_LABEL, parseDebrief,
 } from "./data";
 
 type Line = { id: number; who: "you" | "coach" | "client"; voice?: string; text: string };
@@ -44,6 +44,11 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [flash, setFlash] = useState(false);
   const sessionIdRef = useRef<string>("");
+  // fallback state: read scores from the spoken debrief if the tool call never arrives
+  const debriefBuf = useRef<string>("");
+  const ctx = useRef<{ name: string; level: string; scenario: string; difficulty: string }>({ name: "", level: "unknown", scenario: "", difficulty: "custom" });
+  const lastToolAt = useRef<number>(0);
+  const lastParsed = useRef<{ id: string; at: number } | null>(null);
   const lineId = useRef(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
@@ -63,8 +68,18 @@ export default function App() {
 
   useConversationClientTool("show_results", (params: Record<string, unknown>) => {
     const r = normalise(params, sessionIdRef.current || "session");
-    setSessionResults((s) => [...s, r]);
-    setHistory((h) => [...h, r]);
+    lastToolAt.current = Date.now();
+    debriefBuf.current = "";
+    const lp = lastParsed.current;
+    if (lp && Date.now() - lp.at < 120000) {
+      // the debrief was already read from the transcript: replace it with the richer tool data
+      setSessionResults((s) => s.map((x) => (x.id === lp.id ? r : x)));
+      setHistory((h) => h.map((x) => (x.id === lp.id ? r : x)));
+      lastParsed.current = null;
+    } else {
+      setSessionResults((s) => [...s, r]);
+      setHistory((h) => [...h, r]);
+    }
     setTab("session");
     setFlash(true);
     setTimeout(() => setFlash(false), 1600);
@@ -73,6 +88,38 @@ export default function App() {
 
   const addLines = (ls: Omit<Line, "id">[]) =>
     setLines((prev) => [...prev, ...ls.map((l) => ({ ...l, id: ++lineId.current }))]);
+
+  function handleCoachText(message: string) {
+    const plain = message.replace(/<([A-Za-z_]+)>[\s\S]*?<\/\1>/g, " ");
+    if (!ctx.current.name) {
+      const nm = plain.match(/(?:thanks|thank you|nice to meet you|great to meet you|hi|hello|welcome),?\s+([A-Z][a-z]{1,20})\b/);
+      if (nm && !["Clara", "I", "Let"].includes(nm[1])) ctx.current.name = nm[1];
+    }
+    const play = plain.match(/I'?ll (?:play|be playing) ([^.!?]{8,160}[.!?])/i);
+    if (play) ctx.current.scenario = "Role-play with " + play[1].replace(/[.!?]$/, "");
+    if (/step out of the role-?play|let'?s step out|out of character/i.test(plain)) debriefBuf.current = "";
+    debriefBuf.current += " " + plain;
+    if (Date.now() - lastToolAt.current < 60000) return; // tool already delivered this debrief
+    const parsed = parseDebrief(debriefBuf.current);
+    if (!parsed) return;
+    const r = normalise(
+      {
+        ...parsed,
+        learner_name: ctx.current.name,
+        level: ctx.current.level,
+        scenario: ctx.current.scenario || "Client role-play",
+        difficulty: ctx.current.difficulty,
+      },
+      sessionIdRef.current || "session"
+    );
+    debriefBuf.current = "";
+    lastParsed.current = { id: r.id, at: Date.now() };
+    setSessionResults((s) => [...s, r]);
+    setHistory((h) => [...h, r]);
+    setTab("session");
+    setFlash(true);
+    setTimeout(() => setFlash(false), 1600);
+  }
 
   async function start() {
     setError("");
@@ -84,12 +131,24 @@ export default function App() {
     }
     setLines([]);
     setSessionResults([]);
+    debriefBuf.current = "";
+    lastParsed.current = null;
+    ctx.current = { name: "", level: "unknown", scenario: "", difficulty: "custom" };
     setStartedAt(Date.now());
     convo.startSession({
       onConnect: ({ conversationId }) => { sessionIdRef.current = conversationId; },
       onMessage: ({ message, role }) => {
-        if (role === "user") addLines([{ who: "you", text: message }]);
-        else addLines(splitAgentMessage(message));
+        if (role === "user") {
+          addLines([{ who: "you", text: message }]);
+          const m = message.toLowerCase();
+          if (/associate director|\bad\b/.test(m)) ctx.current.level = "associate_director";
+          else if (/director/.test(m)) ctx.current.level = "director";
+          else if (/manager/.test(m)) ctx.current.level = "manager";
+          for (const d of ["easy", "medium", "hard"]) if (new RegExp(`\\b${d}\\b`).test(m)) ctx.current.difficulty = d;
+        } else {
+          addLines(splitAgentMessage(message));
+          handleCoachText(message);
+        }
       },
       onError: (message) => setError(typeof message === "string" ? message : "Connection error"),
     });

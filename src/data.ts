@@ -157,3 +157,67 @@ export function sampleResults(): Result[] {
     }),
   ];
 }
+
+// ---- fallback: read scores from Clara's spoken debrief ----
+const NUM: Record<string, number> = { zero: 0, one: 1, two: 2, three: 3, four: 4, "0": 0, "1": 1, "2": 2, "3": 3, "4": 4 };
+const SCORE_RE = String.raw`\s*(?:is|was|gets|scores?)?\s*[:,\-–—]?\s*(?:a\s+)?(zero|one|two|three|four|[0-4])(?![0-9])(?:\s*(?:out of|\/)\s*(?:four|4))?`;
+const DIMS: { key: string; re: string }[] = [
+  { key: "clarity_structure", re: String.raw`clarity(?:\s*(?:and|&)\s*structure)?` },
+  { key: "tone_empathy", re: String.raw`tone(?:\s*(?:and|&)\s*empathy)?` },
+  { key: "word_choice", re: String.raw`(?:choice of words|word choice)` },
+  { key: "confidence", re: String.raw`confidence(?:\s*(?:and|&)\s*presence)?` },
+  { key: "track_skill", re: String.raw`(data storytelling|influence)` },
+];
+
+function firstSentence(s: string): string {
+  const t = s.replace(/^\s*[.:,\-–—]\s*/, "").trim();
+  const m = t.match(/^(.{10,240}?[.!?])(\s|$)/);
+  return (m ? m[1] : t.slice(0, 200)).trim();
+}
+
+/** Returns a Result-like record if the text contains all five spoken scores, else null. */
+export function parseDebrief(text: string): Record<string, unknown> | null {
+  const clean = text.replace(/<\/?[A-Za-z_]+>/g, " ").replace(/\s+/g, " ");
+  const found: { key: string; score: number; start: number; end: number; label: string }[] = [];
+  for (const d of DIMS) {
+    const re = new RegExp(d.re + SCORE_RE, "gi");
+    let m: RegExpExecArray | null;
+    let last: (typeof found)[number] | null = null;
+    while ((m = re.exec(clean))) {
+      const numStr = m[m.length - 1].toLowerCase();
+      last = { key: d.key, score: NUM[numStr], start: m.index, end: m.index + m[0].length, label: m[0] };
+    }
+    if (!last) return null;
+    found.push(last);
+  }
+  const ordered = [...found].sort((a, b) => a.start - b.start);
+  const reason = (k: string) => {
+    const f = found.find((x) => x.key === k)!;
+    const next = ordered.find((x) => x.start > f.start);
+    return firstSentence(clean.slice(f.end, next ? next.start : f.end + 300));
+  };
+  const after = clean.slice(ordered[ordered.length - 1].end);
+  const strengthsM = after.match(/(?:things?|what)\s+(?:that\s+)?worked(?:\s+well)?[.:,]?\s*(.+?)(?=(?:the\s+)?(?:one\s+)?(?:highest[- ]impact|thing to change|one thing to)|$)/i);
+  const strengths = strengthsM
+    ? strengthsM[1].split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 8).slice(0, 2).join(" | ")
+    : "";
+  const impM = after.match(/(?:highest[- ]impact[^.]*?|one thing to change[^.]*?)(?:is|:)\s+(?:to\s+)?(.+?[.!?])(\s|$)/i);
+  const lineM = after.match(/try(?:\s+saying)?[:,]?\s*["“]([^"”]{10,300})["”]/i);
+  const trackLabel = found.find((x) => x.key === "track_skill")!.label.toLowerCase();
+  return {
+    track: trackLabel.includes("influence") ? "influence" : "data_storytelling",
+    score_clarity_structure: found[0].score,
+    score_tone_empathy: found[1].score,
+    score_word_choice: found[2].score,
+    score_confidence: found[3].score,
+    score_track_skill: found[4].score,
+    reason_clarity_structure: reason("clarity_structure"),
+    reason_tone_empathy: reason("tone_empathy"),
+    reason_word_choice: reason("word_choice"),
+    reason_confidence: reason("confidence"),
+    reason_track_skill: reason("track_skill"),
+    strengths,
+    top_improvement: impM ? impM[1].charAt(0).toUpperCase() + impM[1].slice(1) : "",
+    stronger_line: lineM ? lineM[1].trim() : "",
+  };
+}
