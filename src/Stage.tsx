@@ -21,18 +21,18 @@ export const CHARACTERS: Record<string, { name: string; role: string; region: st
   UK_Female_Young: { name: "Client", role: "Client manager", region: "UK" },
 };
 
-const PERSONA_NAMES = new Set(Object.values(CHARACTERS).map((c) => c.name).filter((n) => n !== "Client"));
 
 type Props = {
   connected: boolean;
   isSpeaking: boolean;
   speaker: Speaker;
   characterName?: string; // name Clara announced, e.g. "I'll play Tom, a CFO"
+  characterRole?: string;
   getOutputVolume: () => number;
   getInputVolume: () => number;
 };
 
-export default function Stage({ connected, isSpeaking, speaker, characterName, getOutputVolume, getInputVolume }: Props) {
+export default function Stage({ connected, isSpeaking, speaker, characterName, characterRole, getOutputVolume, getInputVolume }: Props) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [imgFailed, setImgFailed] = useState<Record<string, boolean>>({});
   const smooth = useRef(0);
@@ -57,11 +57,15 @@ export default function Stage({ connected, isSpeaking, speaker, characterName, g
 
   const isClient = speaker.kind === "client";
   const info = isClient ? CHARACTERS[speaker.voice] : undefined;
-  const displayName = isClient
-    ? (info && PERSONA_NAMES.has(info.name) ? info.name : characterName || info?.name || "Client")
-    : "Clara";
+  // The name Clara gives the character wins; fall back to the voice's default persona.
+  const announced = characterName && characterName.trim();
+  const usePersona = !announced || (info && info.name === announced);
+  const displayName = isClient ? (usePersona ? info?.name || "Client" : announced!) : "Clara";
+  const role = isClient
+    ? (usePersona ? info?.role : characterRole || "Client") || "Client"
+    : "";
   const subtitle = isClient
-    ? `${info?.role ?? "Client"}${info ? ` · ${info.region}` : ""}`
+    ? `${role.charAt(0).toUpperCase() + role.slice(1)}${info ? ` · ${info.region}` : ""}`
     : "Communication coach";
   const talking = connected && isSpeaking;
   const status = !connected

@@ -71,7 +71,7 @@ export default function App() {
     const v = q.get("client") || (q.has("demo") ? "US_Male_MiddleAged" : "");
     return v ? { kind: "client", voice: v } : { kind: "coach" };
   });
-  const [characterName, setCharacterName] = useState<string>("");
+  const [character, setCharacter] = useState<{ name: string; role: string }>({ name: "", role: "" });
   const connected = convo.status === "connected";
   const connecting = convo.status === "connecting";
 
@@ -115,8 +115,8 @@ export default function App() {
       if (nm && !["Clara", "I", "Let"].includes(nm[1])) ctx.current.name = nm[1];
     }
     const play = plain.match(/I'?ll (?:play|be playing) ([^.!?]{8,160}[.!?])/i);
-    const who = plain.match(/I'?ll (?:play|be playing) ([A-Z][a-z]+(?: [A-Z][a-z]+)?)/);
-    if (who) setCharacterName(who[1]);
+    const who = plain.match(/I'?ll (?:play|be playing) ([A-Z][a-z]+(?: [A-Z][a-z]+)?)(?:,\s*(?:a|an|the)\s+([^,.;]{3,60}))?/);
+    if (who) setCharacter({ name: who[1], role: who[2] ? who[2].trim() : "" });
     if (play) ctx.current.scenario = "Role-play with " + play[1].replace(/[.!?]$/, "");
     if (/step out of the role-?play|let'?s step out|out of character/i.test(plain)) debriefBuf.current = "";
     debriefBuf.current += " " + plain;
@@ -155,7 +155,7 @@ export default function App() {
     debriefBuf.current = "";
     lastParsed.current = null;
     setSpeaker({ kind: "coach" });
-    setCharacterName("");
+    setCharacter({ name: "", role: "" });
     ctx.current = { name: "", level: "unknown", scenario: "", difficulty: "custom" };
     setStartedAt(Date.now());
     convo.startSession({
@@ -174,6 +174,12 @@ export default function App() {
           const lastClient = [...parts].reverse().find((x) => x.who === "client");
           if (lastClient?.voice) setSpeaker({ kind: "client", voice: lastClient.voice });
           else if (parts.length) setSpeaker({ kind: "coach" });
+          for (const c of parts.filter((x) => x.who === "client")) {
+            const intro = c.text.match(/\b(?:I'm|I am|it's|this is|my name is)\s+([A-Z][a-z]+(?: [A-Z][a-z]+)?)\b/);
+            if (intro && !["Sorry", "Just", "Not", "Fine", "Happy", "Glad"].includes(intro[1])) {
+              setCharacter((ch) => (ch.name === intro[1] ? ch : { name: intro[1], role: ch.role }));
+            }
+          }
           handleCoachText(message);
         }
       },
@@ -215,7 +221,8 @@ export default function App() {
             connected={connected}
             isSpeaking={convo.isSpeaking}
             speaker={speaker}
-            characterName={characterName}
+            characterName={character.name}
+            characterRole={character.role}
             getOutputVolume={convo.getOutputVolume}
             getInputVolume={convo.getInputVolume}
           />
