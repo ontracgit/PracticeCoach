@@ -44,8 +44,8 @@ button { font: inherit; cursor: pointer; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; box-shadow: 0 1px 2px rgba(12,35,60,.05); }
 
 /* practice */
-.practice { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 140px); position: sticky; top: 20px; }
-@media (max-width: 960px) { .practice { position: static; max-height: none; } }
+.practice { display: flex; flex-direction: column; gap: 14px; height: calc(100vh - 150px); min-height: 560px; position: sticky; top: 20px; overflow: hidden; }
+@media (max-width: 960px) { .practice { position: static; height: auto; min-height: 0; } .practice .transcript { max-height: 420px; flex: none; } }
 .coach-head { display: flex; gap: 16px; align-items: center; }
 .coach-head h2 { margin: 0 0 2px; font-size: 20px; }
 .muted { color: var(--ink-2); margin: 0; line-height: 1.45; font-size: 14px; }
@@ -74,7 +74,7 @@ button { font: inherit; cursor: pointer; }
 .steps div { background: #f6f8fc; border-radius: 9px; padding: 8px 10px; }
 .steps b { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 50%; background: var(--brand-2); color: #fff; font-size: 11px; }
 
-.transcript { flex: 1; min-height: 220px; overflow-y: auto; border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.transcript { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 .empty { color: var(--ink-3); font-size: 13.5px; text-align: center; margin-top: 30px; }
 .msg { display: flex; flex-direction: column; max-width: 88%; }
 .msg .who { font-size: 11px; font-weight: 600; color: var(--ink-3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
@@ -235,3 +235,14 @@ th { font-weight: 600; color: var(--ink-2); }
 @media (prefers-reduced-motion: reduce) { .ring, .blob, .portrait { animation: none !important; } }
 .portrait.initials { display: grid; place-items: center; font-size: 46px; font-weight: 700; color: #fff; letter-spacing: .02em;
   background: linear-gradient(135deg, var(--accent), var(--brand-2)); }
+
+/* compact stage once a session is running, so the transcript gets the room */
+.practice > * { flex-shrink: 0; }
+.practice > .transcript { flex-shrink: 1; }
+.practice.in-session .stage { flex-direction: row; justify-content: center; gap: 18px; padding: 0; }
+.practice.in-session .stage-visual { width: 132px; height: 132px; }
+.practice.in-session .ring, .practice.in-session .glow { inset: 16px; }
+.practice.in-session .portrait { width: 100px; height: 100px; border-width: 3px; }
+.practice.in-session .portrait.initials { font-size: 32px; }
+.practice.in-session .clara-orb { width: 92px; height: 92px; }
+.practice.in-session .stage-text { text-align: left; }

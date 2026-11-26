@@ -34,11 +34,23 @@ function splitAgentMessage(msg: string): Omit<Line, "id">[] {
   return out;
 }
 
+const DEMO_LINES: Line[] = [
+  { id: -9, who: "coach", text: "Hi, I'm Clara, your communication coach. What's your name, and what's your level?" },
+  { id: -8, who: "you", text: "Hi Clara, I'm Ruth. I'm a manager." },
+  { id: -7, who: "coach", text: "Great to meet you, Ruth. Here are three scenarios: an easy status update, a medium cost-variance explanation, or a hard one defending your forecast to a demanding CFO. Which would you like?" },
+  { id: -6, who: "you", text: "Let's do the hard one." },
+  { id: -5, who: "coach", text: "I'll play David Miller, CFO of a regional bank. He's sharp with numbers and doubts your forecast. Your goal is to defend it and agree a next step. Whenever you're ready, begin." },
+  { id: -4, who: "you", text: "Hi David, thanks for the time. The headline is that we expect Q4 costs to land 12 percent over plan, mainly from contractor spend." },
+  { id: -3, who: "client", voice: "US_Male_MiddleAged", text: "Twelve percent. Last month you told me eight. Why should I trust this number?" },
+  { id: -2, who: "you", text: "Fair question. The gap is two late invoices we've now reconciled. I can walk you through both, and I recommend we freeze new contractor hires this month." },
+  { id: -1, who: "client", voice: "US_Male_MiddleAged", text: "Fine. Send me the reconciliation by Friday and we'll decide on the freeze then." },
+];
+
 export default function App() {
   const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("demo");
   const [history, setHistory] = useState<Result[]>(() => (isDemo ? sampleResults() : loadHistory()));
   const [sessionResults, setSessionResults] = useState<Result[]>(() => (isDemo ? sampleResults().slice(-2) : []));
-  const [lines, setLines] = useState<Line[]>([]);
+  const [lines, setLines] = useState<Line[]>(() => (isDemo ? DEMO_LINES : []));
   const [tab, setTab] = useState<"session" | "progress">("session");
   const [error, setError] = useState<string>("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -55,7 +67,8 @@ export default function App() {
 
   const convo = useConversation();
   const [speaker, setSpeaker] = useState<Speaker>(() => {
-    const v = new URLSearchParams(window.location.search).get("client");
+    const q = new URLSearchParams(window.location.search);
+    const v = q.get("client") || (q.has("demo") ? "US_Male_MiddleAged" : "");
     return v ? { kind: "client", voice: v } : { kind: "coach" };
   });
   const [characterName, setCharacterName] = useState<string>("");
@@ -197,7 +210,7 @@ export default function App() {
 
       <main className="layout">
         {/* ---------- Practice panel ---------- */}
-        <section className="card practice">
+        <section className={"card practice" + (connected || lines.length ? " in-session" : "")}>
           <Stage
             connected={connected}
             isSpeaking={convo.isSpeaking}
@@ -226,12 +239,14 @@ export default function App() {
           </div>
           {error && <div className="error">{error}</div>}
 
-          <div className="steps">
-            <div><b>1</b> Tell Clara your name and level</div>
-            <div><b>2</b> Pick an easy, medium or hard scenario</div>
-            <div><b>3</b> Role-play with the client</div>
-            <div><b>4</b> See your scores on the dashboard</div>
-          </div>
+          {!connected && lines.length === 0 && (
+            <div className="steps">
+              <div><b>1</b> Tell Clara your name and level</div>
+              <div><b>2</b> Pick an easy, medium or hard scenario</div>
+              <div><b>3</b> Role-play with the client</div>
+              <div><b>4</b> See your scores on the dashboard</div>
+            </div>
+          )}
 
           <div className="transcript" ref={transcriptRef} aria-live="polite">
             {lines.length === 0 ? (
