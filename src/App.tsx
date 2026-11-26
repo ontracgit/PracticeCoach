@@ -158,6 +158,7 @@ export default function App() {
     setCharacter({ name: "", role: "" });
     ctx.current = { name: "", level: "unknown", scenario: "", difficulty: "custom" };
     setStartedAt(Date.now());
+    setNow(Date.now());
     convo.startSession({
       onConnect: ({ conversationId }) => { sessionIdRef.current = conversationId; },
       onMessage: ({ message, role }) => {
@@ -194,7 +195,7 @@ export default function App() {
 
   const latest = sessionResults[sessionResults.length - 1];
   const prevInSession = sessionResults.length > 1 ? sessionResults[sessionResults.length - 2] : undefined;
-  const elapsed = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   const mmss = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`;
 
   return (
