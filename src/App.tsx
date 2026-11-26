@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConversation, useConversationClientTool } from "@elevenlabs/react";
 import { ScoreBars, ProgressLine } from "./Charts";
+import Stage, { Speaker } from "./Stage";
 import {
   Result, normalise, average, loadHistory, saveHistory, sampleResults,
   dimensionsFor, LEVEL_LABEL, SCORE_LABEL, parseDebrief,
@@ -53,6 +54,11 @@ export default function App() {
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const convo = useConversation();
+  const [speaker, setSpeaker] = useState<Speaker>(() => {
+    const v = new URLSearchParams(window.location.search).get("client");
+    return v ? { kind: "client", voice: v } : { kind: "coach" };
+  });
+  const [characterName, setCharacterName] = useState<string>("");
   const connected = convo.status === "connected";
   const connecting = convo.status === "connecting";
 
@@ -96,6 +102,8 @@ export default function App() {
       if (nm && !["Clara", "I", "Let"].includes(nm[1])) ctx.current.name = nm[1];
     }
     const play = plain.match(/I'?ll (?:play|be playing) ([^.!?]{8,160}[.!?])/i);
+    const who = plain.match(/I'?ll (?:play|be playing) ([A-Z][a-z]+(?: [A-Z][a-z]+)?)/);
+    if (who) setCharacterName(who[1]);
     if (play) ctx.current.scenario = "Role-play with " + play[1].replace(/[.!?]$/, "");
     if (/step out of the role-?play|let'?s step out|out of character/i.test(plain)) debriefBuf.current = "";
     debriefBuf.current += " " + plain;
@@ -133,6 +141,8 @@ export default function App() {
     setSessionResults([]);
     debriefBuf.current = "";
     lastParsed.current = null;
+    setSpeaker({ kind: "coach" });
+    setCharacterName("");
     ctx.current = { name: "", level: "unknown", scenario: "", difficulty: "custom" };
     setStartedAt(Date.now());
     convo.startSession({
@@ -146,7 +156,11 @@ export default function App() {
           else if (/manager/.test(m)) ctx.current.level = "manager";
           for (const d of ["easy", "medium", "hard"]) if (new RegExp(`\\b${d}\\b`).test(m)) ctx.current.difficulty = d;
         } else {
-          addLines(splitAgentMessage(message));
+          const parts = splitAgentMessage(message);
+          addLines(parts);
+          const lastClient = [...parts].reverse().find((x) => x.who === "client");
+          if (lastClient?.voice) setSpeaker({ kind: "client", voice: lastClient.voice });
+          else if (parts.length) setSpeaker({ kind: "coach" });
           handleCoachText(message);
         }
       },
@@ -184,19 +198,17 @@ export default function App() {
       <main className="layout">
         {/* ---------- Practice panel ---------- */}
         <section className="card practice">
-          <div className="coach-head">
-            <div className={"orb " + (connected ? (convo.isSpeaking ? "speaking" : "listening") : "")}>
-              <div className="orb-core" />
-            </div>
-            <div>
-              <h2>Clara</h2>
-              <p className="muted">
-                {connected
-                  ? convo.isSpeaking ? "Speaking…" : "Listening — go ahead"
-                  : "Your communication coach. She'll run a client role-play, then score you on five parameters."}
-              </p>
-            </div>
-          </div>
+          <Stage
+            connected={connected}
+            isSpeaking={convo.isSpeaking}
+            speaker={speaker}
+            characterName={characterName}
+            getOutputVolume={convo.getOutputVolume}
+            getInputVolume={convo.getInputVolume}
+          />
+          {!connected && (
+            <p className="muted intro">Clara runs a client role-play in a realistic voice, then scores you on five parameters.</p>
+          )}
 
           <div className="controls">
             {!connected ? (
